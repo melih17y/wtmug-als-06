@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rapor - Sesli QR Yoklama</title>
+<meta name="theme-color" content="#1e40af">
+<link rel="icon" href="icon.svg">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;padding:12px;padding-bottom:40px}
+  header{background:#1e40af;padding:14px 16px;border-radius:12px;margin-bottom:12px;
+    display:flex;justify-content:space-between;align-items:center;gap:8px}
+  header h1{margin:0;font-size:16px;flex:1}
+  header a{color:#fff;text-decoration:none;background:rgba(255,255,255,.15);
+    padding:8px 12px;border-radius:8px;font-size:13px;white-space:nowrap}
+  .card{background:#1e293b;border-radius:14px;padding:16px;margin-bottom:12px}
+  label{display:block;font-size:13px;color:#94a3b8;margin-bottom:6px;font-weight:600}
+  select{width:100%;padding:12px;border-radius:10px;border:1px solid #334155;
+    background:#0f172a;color:#e2e8f0;font-size:15px}
+  .table-wrap{overflow-x:auto;border-radius:10px;-webkit-overflow-scrolling:touch}
+  table{border-collapse:collapse;width:100%;font-size:12px;min-width:880px;background:#0f172a}
+  th,td{padding:8px 6px;text-align:center;border:1px solid #334155}
+  th{background:#1e293b;font-size:11px;color:#94a3b8;font-weight:600}
+  th.week-col{min-width:32px}
+  td.student-name{text-align:left;min-width:170px;white-space:nowrap;font-size:12px}
+  td.student-name small{display:block;color:#64748b;font-size:10px}
+  .yes{color:#10b981;font-weight:bold;font-size:16px}
+  .no{color:#475569;font-size:16px}
+  .total{color:#fbbf24;font-weight:bold;font-size:13px}
+  .pct{color:#94a3b8;font-size:10px;display:block}
+  .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
+  .stat{background:#0f172a;padding:12px 8px;border-radius:10px;text-align:center}
+  .stat-num{font-size:22px;font-weight:bold;color:#fbbf24}
+  .stat-label{font-size:10px;color:#94a3b8;text-transform:uppercase;margin-top:4px;letter-spacing:.5px}
+  button{padding:11px 14px;border:none;border-radius:10px;font-weight:600;
+    cursor:pointer;font-size:13px;color:#fff;transition:filter .15s}
+  button:hover{filter:brightness(1.1)}
+  button:active{transform:scale(.98)}
+  .btn-actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  .btn-reset{background:#dc2626;flex:1;min-width:160px}
+  .btn-print{background:#2563eb;flex:1;min-width:160px}
+  .empty{text-align:center;padding:40px 20px;color:#64748b;font-size:14px}
+  .empty-icon{font-size:48px;margin-bottom:12px;display:block;opacity:.5}
+  .alert{padding:12px;border-radius:10px;margin-bottom:12px;font-size:14px;display:none}
+  .alert.show{display:block}
+  .alert-error{background:#7f1d1d;color:#fecaca;border:1px solid #b91c1c}
+  .alert-warning{background:#78350f;color:#fde68a;border:1px solid #f59e0b}
+  @media print {
+    body{background:#fff;color:#000;padding:0}
+    header,.card:first-of-type,#statsCard .stat,.btn-actions,.alert{display:none!important}
+    .card{background:#fff;border:1px solid #ccc;box-shadow:none}
+    table{background:#fff;color:#000}
+    th,td{border-color:#999;color:#000}
+    th{background:#eee;color:#000}
+    .yes{color:#000} .no{color:#999} .total{color:#000}
+    td.student-name small{color:#555}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📊 Yoklama Raporu</h1>
+  <a href="lecturer.html">← Hoca</a>
+</header>
+
+<div id="alertBox" class="alert"></div>
+
+<div class="card">
+  <label for="courseSelect">Ders Seçin</label>
+  <select id="courseSelect">
+    <option value="">Yükleniyor...</option>
+  </select>
+</div>
+
+<div id="statsCard" class="card" style="display:none">
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-num" id="totalStudents">0</div>
+      <div class="stat-label">Öğrenci</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="totalSignatures">0</div>
+      <div class="stat-label">İmza</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num" id="totalRate">0%</div>
+      <div class="stat-label">Katılım</div>
+    </div>
+  </div>
+</div>
+
+<div id="tableCard" class="card" style="display:none">
+  <div class="table-wrap">
+    <table id="reportTable">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="btn-actions">
+    <button id="printBtn" class="btn-print" aria-label="Raporu yazdır">🖨️ Yazdır</button>
+    <button id="resetBtn" class="btn-reset" aria-label="Bu dersin yoklamasını sıfırla">🗑️ Yoklamayı Sıfırla</button>
+  </div>
+</div>
+
+<div id="emptyCard" class="card">
+  <div class="empty">
+    <span class="empty-icon">📋</span>
+    Bir ders seçiniz...
+  </div>
+</div>
+
+<script>
+const TOTAL_WEEKS = 14;
+const STORAGE_KEY = 'yoklama_attendance_v1';
+let students = {}, courses = [], currentCourse = null;
+
+// ========== INIT ==========
+(async function init() {
+  try {
+    const [st, cr] = await Promise.all([
+      fetch('students.json').then(r => {
+        if (!r.ok) throw new Error('students.json yüklenemedi');
+        return r.json();
+      }),
+      fetch('courses.json').then(r => {
+        if (!r.ok) throw new Error('courses.json yüklenemedi');
+        return r.json();
+      })
+    ]);
+    courses = cr;
+    st.forEach(s => students[s.no] = s);
+
+    const sel = document.getElementById('courseSelect');
+    sel.innerHTML = '<option value="">-- Ders seçin --</option>';
+    cr.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.code;
+      o.textContent = `${c.code} - ${c.name}`;
+      sel.appendChild(o);
+    });
+    sel.onchange = () => {
+      currentCourse = courses.find(c => c.code === sel.value) || null;
+      render();
+    };
+
+    document.getElementById('resetBtn').onclick = resetCourse;
+    document.getElementById('printBtn').onclick = () => window.print();
+
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+  } catch (e) {
+    showAlert('❌ Başlangıç hatası: ' + e.message);
+  }
+})();
+
+// ========== STORAGE ==========
+function getAttendance() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+  catch { return {}; }
+}
+function saveAttendance(a) { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); }
+
+// ========== RENDER ==========
+function render() {
+  const empty = document.getElementById('emptyCard');
+  const tableCard = document.getElementById('tableCard');
+  const statsCard = document.getElementById('statsCard');
+
+  if (!currentCourse) {
+    empty.style.display = 'block';
+    tableCard.style.display = 'none';
+    statsCard.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  tableCard.style.display = 'block';
+  statsCard.style.display = 'block';
+
+  const att = getAttendance()[currentCourse.code] || {};
+  const table = document.getElementById('reportTable');
+  const thead = table.querySelector('thead');
+  const tbody = table.querySelector('tbody');
+
+  // ---- HEADER ----
+  let hRow = '<tr><th style="text-align:left">Öğrenci</th>';
+  for (let w = 1; w <= TOTAL_WEEKS; w++) hRow += `<th class="week-col">H${w}</th>`;
+  hRow += '<th>Toplam</th></tr>';
+  thead.innerHTML = hRow;
+
+  // ---- BODY ----
+  let grandTotal = 0;
+  let rowCount = 0;
+  tbody.innerHTML = '';
+
+  // Kayıtlı öğrenciler
+  const registeredNos = new Set(currentCourse.students);
+
+  // Önce kayıtlı öğrenciler için satırlar
+  currentCourse.students.forEach(sn => {
+    const s = students[sn];
+    const rawWeeks = att[sn] || [];
+    // Defansif: 14 haftalık sınır
+    const weeks = rawWeeks.filter(w => w >= 1 && w <= TOTAL_WEEKS);
+
+    const row = document.createElement('tr');
+    let html = `<td class="student-name">`;
+    if (s) {
+      html += `${s.no} ${s.name} ${s.surname}`;
+      html += `<small>${s.department} · ${s.class}</small>`;
+    } else {
+      html += `${sn}<small>⚠️ Öğrenci kaydı bulunamadı</small>`;
+    }
+    html += `</td>`;
+
+    for (let w = 1; w <= TOTAL_WEEKS; w++) {
+      const has = weeks.includes(w);
+      html += `<td>${has ? '<span class="yes">✓</span>' : '<span class="no">✗</span>'}</td>`;
+    }
+    const pct = Math.round((weeks.length / TOTAL_WEEKS) * 100);
+    html += `<td class="total">${weeks.length}/14<span class="pct">${pct}%</span></td>`;
+    grandTotal += weeks.length;
+    rowCount++;
+    row.innerHTML = html;
+    tbody.appendChild(row);
+  });
+
+  // Defansif: Kayıtlı olmayan ama localStorage'da imzası olan öğrenciler (ders değişikliği vs.)
+  Object.keys(att).forEach(sn => {
+    if (registeredNos.has(sn)) return;
+    const rawWeeks = att[sn] || [];
+    const weeks = rawWeeks.filter(w => w >= 1 && w <= TOTAL_WEEKS);
+    if (weeks.length === 0) return;
+
+    const s = students[sn];
+    const row = document.createElement('tr');
+    let html = `<td class="student-name" style="opacity:.7">`;
+    html += s ? `${s.no} ${s.name} ${s.surname}` : sn;
+    html += `<small>⚠️ Derse kayıtlı değil (eski veri)</small></td>`;
+    for (let w = 1; w <= TOTAL_WEEKS; w++) {
+      const has = weeks.includes(w);
+      html += `<td>${has ? '<span class="yes">✓</span>' : '<span class="no">✗</span>'}</td>`;
+    }
+    const pct = Math.round((weeks.length / TOTAL_WEEKS) * 100);
+    html += `<td class="total">${weeks.length}/14<span class="pct">${pct}%</span></td>`;
+    grandTotal += weeks.length;
+    rowCount++;
+    row.innerHTML = html;
+    tbody.appendChild(row);
+  });
+
+  // ---- STATS ----
+  const maxPossible = rowCount * TOTAL_WEEKS;
+  const rate = maxPossible > 0 ? Math.round((grandTotal / maxPossible) * 100) : 0;
+  document.getElementById('totalStudents').textContent = rowCount;
+  document.getElementById('totalSignatures').textContent = grandTotal;
+  document.getElementById('totalRate').textContent = rate + '%';
+}
+
+// ========== RESET ==========
+function resetCourse() {
+  if (!currentCourse) return;
+  if (!confirm(`"${currentCourse.code} - ${currentCourse.name}" dersinin TÜM yoklama verileri silinecek. Onaylıyor musunuz?`)) return;
+
+  const a = getAttendance();
+  delete a[currentCourse.code];
+  saveAttendance(a);
+  showAlert('✅ Bu dersin yoklama verileri sıfırlandı.');
+  render();
+}
+
+// ========== ALERT ==========
+function showAlert(msg, type = 'error') {
+  const el = document.getElementById('alertBox');
+  el.textContent = msg;
+  el.className = 'alert show alert-' + (type === 'warning' ? 'warning' : 'error');
+  clearTimeout(showAlert._t);
+  showAlert._t = setTimeout(() => el.classList.remove('show'), 5000);
+}
+</script>
+</body>
+</html>

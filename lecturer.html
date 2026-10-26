@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hoca - Sesli QR Yoklama</title>
+<link rel="manifest" href="manifest-lecturer.json">
+<meta name="theme-color" content="#1e40af">
+<link rel="icon" href="icon.svg">
+
+<!-- ✅ jsQR — jsdelivr + fallback (cdnjs) -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"
+        onerror="loadJsQRFallback()"></script>
+<script>
+function loadJsQRFallback() {
+  console.warn('[jsQR] Birincil CDN başarısız, fallback deneniyor...');
+  const s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.min.js';
+  s.onerror = () => console.error('[jsQR] Fallback CDN de başarısız. lib/jsQR.js kullanın.');
+  document.head.appendChild(s);
+}
+</script>
+
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;
+    padding:12px;padding-bottom:120px}
+  header{background:#1e40af;padding:14px 16px;border-radius:12px;margin-bottom:12px;
+    display:flex;justify-content:space-between;align-items:center}
+  header h1{margin:0;font-size:16px}
+  header a{color:#fff;text-decoration:none;background:rgba(255,255,255,.15);
+    padding:8px 12px;border-radius:8px;font-size:13px}
+  .card{background:#1e293b;border-radius:14px;padding:16px;margin-bottom:12px}
+  label{display:block;font-size:13px;color:#94a3b8;margin-bottom:6px;font-weight:600}
+  select,input{width:100%;padding:12px;border-radius:10px;border:1px solid #334155;
+    background:#0f172a;color:#e2e8f0;font-size:15px}
+  button{padding:12px;border:none;border-radius:10px;font-weight:600;font-size:15px;
+    cursor:pointer;transition:opacity .2s}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .btn-primary{background:#059669;color:#fff;width:100%}
+  .btn-danger{background:#dc2626;color:#fff;width:100%}
+  .btn-cam{background:#7c3aed;color:#fff;width:100%;margin-top:10px}
+  .btn-close-cam{background:#b91c1c;color:#fff;width:100%;margin-top:10px}
+  .code-display{font-family:monospace;font-size:64px;font-weight:bold;color:#fbbf24;
+    text-align:center;padding:12px;letter-spacing:8px;background:#0f172a;
+    border-radius:12px;border:2px solid #fbbf24;margin:8px 0}
+  .code-label{text-align:center;color:#94a3b8;font-size:12px;text-transform:uppercase;
+    letter-spacing:2px}
+  .video-wrap{position:relative;border-radius:12px;overflow:hidden;background:#000;
+    aspect-ratio:1}
+  video{width:100%;height:100%;object-fit:cover;display:block}
+  #scanCanvas{display:none}
+  .checkbox-row{display:flex;align-items:center;gap:10px;margin-top:10px}
+  .checkbox-row input{width:20px;height:20px}
+  .checkbox-row label{margin:0;font-size:14px;color:#e2e8f0}
+  .student-info{display:none}
+  .student-info.show{display:block;animation:fadeIn .3s}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .student-card{display:flex;gap:14px;align-items:center;margin-top:12px}
+  .student-card img{width:90px;height:90px;border-radius:50%;object-fit:cover;
+    border:3px solid #059669;background:#334155}
+  .student-details h3{margin:0 0 4px;color:#fbbf24;font-size:18px}
+  .student-details p{margin:2px 0;font-size:13px;color:#cbd5e1}
+  .alert{padding:12px;border-radius:10px;margin-bottom:10px;font-size:14px;display:none}
+  .alert.show{display:block}
+  .alert-error{background:#7f1d1d;color:#fecaca;border:1px solid #b91c1c}
+  .alert-success{background:#064e3b;color:#a7f3d0;border:1px solid #059669}
+  .alert-warning{background:#78350f;color:#fde68a;border:1px solid #f59e0b}
+  .status{text-align:center;font-size:13px;color:#94a3b8;margin-top:8px}
+  .pulse{animation:pulse 1.5s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>👨‍🏫 Hoca - Yoklama</h1>
+  <a href="report.html">📊 Rapor</a>
+</header>
+
+<div class="card">
+  <label>Ders</label>
+  <select id="courseSelect"><option value="">Yükleniyor...</option></select>
+  <label style="margin-top:12px">Hafta</label>
+  <select id="weekSelect"></select>
+</div>
+
+<div class="card">
+  <div id="alertBox" class="alert"></div>
+  <div class="code-label">Aktif Kod</div>
+  <div id="codeDisplay" class="code-display">----</div>
+  <div id="statusText" class="status">Yayın bekleniyor...</div>
+  <button id="broadcastBtn" class="btn-primary" style="margin-top:12px">▶️ Yayını Başlat</button>
+  <div class="checkbox-row">
+    <input type="checkbox" id="autoCam" checked>
+    <label for="autoCam">Otomatik Kamera (yayın başlarken açılır, başarılı okumada kapanır)</label>
+  </div>
+</div>
+
+<div class="card">
+  <label>QR Kod Okuyucu</label>
+  <div id="videoWrap" class="video-wrap" style="display:none">
+    <video id="cameraVideo" playsinline muted></video>
+  </div>
+  <canvas id="scanCanvas"></canvas>
+  <button id="camBtn" class="btn-cam">📷 Kamerayı Aç</button>
+</div>
+
+<div id="studentInfo" class="card student-info">
+  <div class="student-card">
+    <img id="studentPhoto" alt="Öğrenci" src="">
+    <div class="student-details">
+      <h3 id="studentName">-</h3>
+      <p id="studentNo">-</p>
+      <p id="studentDept">-</p>
+      <p id="studentProg">-</p>
+      <p id="studentClass">-</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== CONFIG & STATE ==========
+const TOTAL_WEEKS = 14;
+const STORAGE_KEY = 'yoklama_attendance_v1';
+
+let students = {}, courses = [];
+let currentCourse = null;
+let selectedWeek = 1;
+let currentCode = null;
+let broadcasting = false;
+let broadcastTimer = null;
+let loopCounter = 0;
+let audioCtx = null;
+let cameraStream = null;
+let scanning = false;
+let lastScanContent = '', lastScanTime = 0;
+
+// ========== INIT ==========
+(async function init() {
+  try {
+    const [st, cr] = await Promise.all([
+      fetch('students.json').then(r => {
+        if (!r.ok) throw new Error('students.json yüklenemedi');
+        return r.json();
+      }),
+      fetch('courses.json').then(r => {
+        if (!r.ok) throw new Error('courses.json yüklenemedi');
+        return r.json();
+      })
+    ]);
+    courses = cr;
+    st.forEach(s => students[s.no] = s);
+
+    const sel = document.getElementById('courseSelect');
+    sel.innerHTML = '<option value="">-- Ders seçin --</option>';
+    cr.forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.code;
+      o.textContent = `${c.code} - ${c.name}`;
+      sel.appendChild(o);
+    });
+
+    const ws = document.getElementById('weekSelect');
+    for (let i = 1; i <= TOTAL_WEEKS; i++) {
+      const o = document.createElement('option');
+      o.value = i;
+      o.textContent = `Hafta ${i}`;
+      ws.appendChild(o);
+    }
+
+    sel.onchange = () => {
+      currentCourse = courses.find(c => c.code === sel.value) || null;
+      updateBroadcastState();
+    };
+    ws.onchange = () => { selectedWeek = parseInt(ws.value); };
+
+    document.getElementById('broadcastBtn').onclick = toggleBroadcast;
+    document.getElementById('camBtn').onclick = toggleCamera;
+
+    if (typeof window.jsQR !== 'function') {
+      setTimeout(() => {
+        if (typeof window.jsQR !== 'function') {
+          showAlert('⚠️ jsQR kütüphanesi yüklenemedi. İnternet bağlantınızı kontrol edin.', 'warning');
+        }
+      }, 2000);
+    }
+
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+  } catch (e) {
+    showAlert('❌ Başlangıç hatası: ' + e.message, 'error');
+  }
+})();
+
+function updateBroadcastState() {
+  document.getElementById('broadcastBtn').disabled = !currentCourse;
+}
+
+// ========== ATTENDANCE STORAGE ==========
+function getAttendance() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
+  catch { return {}; }
+}
+function saveAttendance(a) { localStorage.setItem(STORAGE_KEY, JSON.stringify(a)); }
+
+function hasSignature(courseCode, studentNo, week) {
+  const a = getAttendance();
+  return !!(a[courseCode]?.[studentNo]?.includes(week));
+}
+function recordSignature(courseCode, studentNo, week) {
+  const a = getAttendance();
+  a[courseCode] = a[courseCode] || {};
+  a[courseCode][studentNo] = a[courseCode][studentNo] || [];
+  if (!a[courseCode][studentNo].includes(week)) a[courseCode][studentNo].push(week);
+  saveAttendance(a);
+}
+
+// ========== DTMF AUDIO ==========
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+const DTMF_FREQS = {
+  '0':[941,1336],'1':[697,1209],'2':[697,1336],'3':[697,1477],
+  '4':[770,1209],'5':[770,1336],'6':[770,1477],
+  '7':[852,1209],'8':[852,1336],'9':[852,1477]
+};
+
+async function playDTMFDigit(digit, durationMs) {
+  const ctx = getAudioCtx();
+  if (ctx.state === 'suspended') await ctx.resume();
+  const [f1, f2] = DTMF_FREQS[digit];
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc1.frequency.value = f1;
+  osc2.frequency.value = f2;
+  osc1.type = 'sine'; osc2.type = 'sine';
+  osc1.connect(gain); osc2.connect(gain);
+  gain.connect(ctx.destination);
+  const now = ctx.currentTime;
+  const dur = durationMs / 1000;
+  gain.gain.setValueAtTime(0, now);
+  gain.gain.linearRampToValueAtTime(0.35, now + 0.015);
+  gain.gain.setValueAtTime(0.35, now + dur - 0.015);
+  gain.gain.linearRampToValueAtTime(0, now + dur);
+  osc1.start(now); osc2.start(now);
+  osc1.stop(now + dur); osc2.stop(now + dur);
+}
+
+// ✅ DÜZELTİLMİŞ playCode — tonlar artık üst üste binmez
+async function playCode(code) {
+  for (const d of code) {
+    await playDTMFDigit(d, 650);                        // ton zamanlanır (650ms çalar)
+    await new Promise(r => setTimeout(r, 650 + 350));   // ✅ ton bitene kadar bekle (650) + sessizlik (350) = 1000ms
+  }
+}
+
+// ========== BROADCAST ==========
+async function toggleBroadcast() {
+  if (broadcasting) return stopBroadcast();
+  if (!currentCourse) { showAlert('Lütfen ders seçin.', 'error'); return; }
+
+  broadcasting = true;
+  const btn = document.getElementById('broadcastBtn');
+  btn.textContent = '⏹️ Yayını Durdur';
+  btn.className = 'btn-danger';
+
+  if (document.getElementById('autoCam').checked) openCamera();
+
+  broadcastLoop();
+}
+
+function stopBroadcast() {
+  broadcasting = false;
+  loopCounter++;
+  const btn = document.getElementById('broadcastBtn');
+  btn.textContent = '▶️ Yayını Başlat';
+  btn.className = 'btn-primary';
+  const disp = document.getElementById('codeDisplay');
+  disp.textContent = '----';
+  disp.classList.remove('pulse');
+  document.getElementById('statusText').textContent = 'Yayın durduruldu';
+  closeCamera();
+}
+
+async function broadcastLoop() {
+  const myLoop = ++loopCounter;
+  while (broadcasting && myLoop === loopCounter) {
+    const code = String(Math.floor(1000 + Math.random() * 9000));
+    currentCode = code;
+
+    const disp = document.getElementById('codeDisplay');
+    disp.textContent = code;
+    disp.classList.add('pulse');
+    document.getElementById('statusText').textContent = '📡 Ses dalgası yayınlanıyor...';
+
+    await playCode(code);                             // 4 saniye (4 digit × 1000ms)
+    if (!broadcasting || myLoop !== loopCounter) break;
+
+    document.getElementById('statusText').textContent = '✅ Kod geçerli. Yeni kod bekleniyor...';
+    disp.classList.remove('pulse');
+
+    const wait = 8000 + Math.random() * 3000;         // 8-11 sn bekle → toplam 12-15sn
+    await new Promise(r => { broadcastTimer = setTimeout(r, wait); });
+  }
+}
+
+// ========== CAMERA & QR SCAN ==========
+async function openCamera() {
+  if (cameraStream) return;
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    });
+    const video = document.getElementById('cameraVideo');
+    video.srcObject = cameraStream;
+    await video.play();
+    document.getElementById('videoWrap').style.display = 'block';
+    const btn = document.getElementById('camBtn');
+    btn.textContent = '📷 Kamerayı Kapat';
+    btn.className = 'btn-close-cam';
+    scanning = true;
+    scanLoop();
+  } catch (e) {
+    showAlert('Kamera açılamadı: ' + e.message, 'error');
+  }
+}
+
+function closeCamera() {
+  scanning = false;
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  const vw = document.getElementById('videoWrap');
+  if (vw) vw.style.display = 'none';
+  const btn = document.getElementById('camBtn');
+  if (btn) {
+    btn.textContent = '📷 Kamerayı Aç';
+    btn.className = 'btn-cam';
+  }
+}
+
+function toggleCamera() {
+  if (cameraStream) closeCamera(); else openCamera();
+}
+
+function scanLoop() {
+  if (!scanning) return;
+  const video = document.getElementById('cameraVideo');
+  const canvas = document.getElementById('scanCanvas');
+
+  if (video && video.videoWidth && typeof window.jsQR === 'function') {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(video, 0, 0);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const qr = window.jsQR(img.data, img.width, img.height, {
+      inversionAttempts: 'attemptBoth'
+    });
+    if (qr && qr.data) handleQR(qr.data);
+  }
+  requestAnimationFrame(scanLoop);
+}
+
+// ========== QR HANDLING ==========
+function handleQR(text) {
+  const now = Date.now();
+  if (text === lastScanContent && now - lastScanTime < 2000) return;
+  lastScanContent = text;
+  lastScanTime = now;
+
+  console.log('[QR] Okundu:', text, '| Güncel kod:', currentCode);
+
+  let data;
+  try { data = JSON.parse(text); }
+  catch {
+    showAlert('❌ Geçersiz QR kod formatı.', 'error');
+    return;
+  }
+
+  if (!data.sn || !data.c) {
+    showAlert('❌ QR kod eksik veri içeriyor.', 'error');
+    return;
+  }
+
+  if (!currentCode) {
+    showAlert('❌ Aktif kod yok. Yayını başlatın.', 'error');
+    return;
+  }
+  if (data.c !== currentCode) {
+    showAlert(`❌ Kod eşleşmiyor! Güncel kod: ${currentCode}`, 'error');
+    return;
+  }
+
+  if (!currentCourse) {
+    showAlert('❌ Ders seçili değil.', 'error');
+    return;
+  }
+  if (!currentCourse.students.includes(data.sn)) {
+    showAlert(`❌ ${data.sn} numaralı öğrenci bu derse (${currentCourse.code}) kayıtlı değil!`, 'error');
+    return;
+  }
+
+  if (hasSignature(currentCourse.code, data.sn, selectedWeek)) {
+    showAlert(`⚠️ Öğrenci bu hafta (Hafta ${selectedWeek}) zaten yoklamaya katıldı.`, 'warning');
+    return;
+  }
+
+  recordSignature(currentCourse.code, data.sn, selectedWeek);
+  showStudentInfo(data.sn);
+
+  const s = students[data.sn];
+  showAlert(`✅ ${s ? s.name + ' ' + s.surname : data.sn} - Hafta ${selectedWeek} imzası kaydedildi.`, 'success');
+
+  if (document.getElementById('autoCam').checked) closeCamera();
+}
+
+function showStudentInfo(no) {
+  const s = students[no];
+  if (!s) return;
+
+  const img = document.getElementById('studentPhoto');
+  img.onerror = function() {
+    this.onerror = null;
+    this.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">' +
+      '<rect width="100" height="100" fill="#334155"/>' +
+      '<circle cx="50" cy="38" r="18" fill="#94a3b8"/>' +
+      '<ellipse cx="50" cy="88" rx="30" ry="22" fill="#94a3b8"/>' +
+      '</svg>'
+    );
+  };
+  img.src = `photos/${no}.jpeg`;
+
+  document.getElementById('studentName').textContent = `${s.name} ${s.surname}`;
+  document.getElementById('studentNo').textContent = `No: ${s.no}`;
+  document.getElementById('studentDept').textContent = s.department;
+  document.getElementById('studentProg').textContent = s.program;
+  document.getElementById('studentClass').textContent = s.class;
+  document.getElementById('studentInfo').classList.add('show');
+}
+
+function showAlert(msg, type) {
+  const el = document.getElementById('alertBox');
+  el.textContent = msg;
+  const cls = type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'error';
+  el.className = 'alert show alert-' + cls;
+  clearTimeout(showAlert._t);
+  showAlert._t = setTimeout(() => el.classList.remove('show'), 5000);
+}
+
+document.addEventListener('click', () => {
+  try {
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+  } catch {}
+}, { once: true });
+</script>
+</body>
+</html>

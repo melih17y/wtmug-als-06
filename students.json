@@ -1,0 +1,42 @@
+[
+  {
+    "no": "2024001",
+    "name": "Ali",
+    "surname": "Yılmaz",
+    "department": "Bilgisayar Mühendisliği",
+    "program": "Lisans",
+    "class": "2. Sınıf"
+  },
+  {
+    "no": "2024002",
+    "name": "Ayşe",
+    "surname": "Kaya",
+    "department": "Bilgisayar Mühendisliği",
+    "program": "Lisans",
+    "class": "2. Sınıf"
+  },
+  {
+    "no": "2024003",
+    "name": "Mehmet",
+    "surname": "Demir",
+    "department": "Bilgisayar Mühendisliği",
+    "program": "Lisans",
+    "class": "2. Sınıf"
+  },
+  {
+    "no": "2024004",
+    "name": "Zeynep",
+    "surname": "Şahin",
+    "department": "Yazılım Mühendisliği",
+    "program": "Lisans",
+    "class": "1. Sınıf"
+  },
+  {
+    "no": "2024005",
+    "name": "Can",
+    "surname": "Öztürk",
+    "department": "Yazılım Mühendisliği",
+    "program": "Lisans",
+    "class": "1. Sınıf"
+  }
+]

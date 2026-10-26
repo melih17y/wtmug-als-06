@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Öğrenci - Sesli QR Yoklama</title>
+<link rel="manifest" href="manifest-student.json">
+<meta name="theme-color" content="#059669">
+<link rel="icon" href="icon.svg">
+
+<!-- ✅ FIX #1: QRCode CDN — cdnjs (güvenilir) + fallback -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+        onerror="loadQRCodeFallback()"></script>
+<script>
+function loadQRCodeFallback() {
+  console.warn('[QR] Birincil CDN başarısız, fallback deneniyor...');
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@master/qrcode.min.js';
+  s.onerror = () => {
+    console.error('[QR] Fallback CDN de başarısız. lib/qrcode.min.js kullanın.');
+    document.addEventListener('DOMContentLoaded', () => {
+      const el = document.getElementById('alertBox');
+      if (el) {
+        el.textContent = '❌ QR kütüphanesi yüklenemedi. lib/qrcode.min.js ekleyin veya interneti kontrol edin.';
+        el.className = 'alert show alert-error';
+      }
+    });
+  };
+  document.head.appendChild(s);
+}
+</script>
+
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;
+    padding:12px;padding-bottom:80px}
+  header{background:#059669;padding:14px 16px;border-radius:12px;margin-bottom:12px;
+    display:flex;justify-content:space-between;align-items:center}
+  header h1{margin:0;font-size:16px}
+  .card{background:#1e293b;border-radius:14px;padding:16px;margin-bottom:12px}
+  label{display:block;font-size:13px;color:#94a3b8;margin-bottom:6px;font-weight:600}
+  input{width:100%;padding:12px;border-radius:10px;border:1px solid #334155;
+    background:#0f172a;color:#e2e8f0;font-size:15px;font-family:inherit}
+  button{padding:12px;border:none;border-radius:10px;font-weight:600;font-size:15px;
+    cursor:pointer;transition:opacity .2s;width:100%}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .btn-green{background:#059669;color:#fff}
+  .btn-red{background:#dc2626;color:#fff}
+  .btn-blue{background:#2563eb;color:#fff;margin-top:10px}
+  .qr-wrap{background:#fff;padding:16px;border-radius:14px;display:flex;
+    justify-content:center;align-items:center;min-height:340px;margin:12px 0}
+  #qrcode{display:flex;justify-content:center;align-items:center}
+  #qrcode img, #qrcode canvas{display:block}
+  .placeholder-qr{color:#64748b;text-align:center;font-size:14px;padding:40px 20px}
+  .detected-code{text-align:center;font-family:monospace;font-size:36px;font-weight:bold;
+    color:#fbbf24;letter-spacing:6px;margin:8px 0;min-height:44px}
+  .status{text-align:center;font-size:13px;color:#94a3b8;margin-top:6px}
+  .partial{text-align:center;font-family:monospace;font-size:16px;color:#f59e0b;
+    margin-top:6px;min-height:20px;letter-spacing:2px}
+  .mic-indicator{display:inline-block;width:10px;height:10px;border-radius:50%;
+    background:#dc2626;margin-right:6px;animation:pulse 1.2s infinite;vertical-align:middle}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .info-row{display:flex;justify-content:space-between;font-size:13px;
+    color:#94a3b8;padding:4px 0}
+  .info-row span:last-child{color:#e2e8f0;font-weight:600}
+  .alert{padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:13px;display:none}
+  .alert.show{display:block}
+  .alert-error{background:#7f1d1d;color:#fecaca;border:1px solid #b91c1c}
+  .alert-info{background:#1e3a8a;color:#bfdbfe;border:1px solid #2563eb}
+  .listen-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .listen-status{font-size:13px;color:#94a3b8}
+  #listenBtn{width:auto;padding:8px 14px;font-size:13px}
+  .meter{height:6px;background:#0f172a;border-radius:3px;overflow:hidden;margin-top:8px}
+  .meter-bar{height:100%;background:linear-gradient(90deg,#059669,#10b981);
+    width:0%;transition:width .08s linear}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎒 Öğrenci - Yoklama</h1>
+</header>
+
+<div id="alertBox" class="alert"></div>
+
+<div class="card">
+  <label for="studentNoInput">Öğrenci Numarası</label>
+  <input id="studentNoInput" type="text" inputmode="numeric"
+         placeholder="örn: 2024001" maxlength="20" autocomplete="off">
+  <div class="info-row">
+    <span>Durum:</span>
+    <span id="savedStatus">-</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="listen-header">
+    <div class="listen-status">
+      <span id="micDot" class="mic-indicator" style="display:none"></span>
+      <span id="listenStatus">Dinleme durduruldu</span>
+    </div>
+    <button id="listenBtn" class="btn-green">🎤 Dinle</button>
+  </div>
+
+  <div class="meter" aria-hidden="true">
+    <div id="meterBar" class="meter-bar"></div>
+  </div>
+
+  <div class="detected-code" id="detectedCode">----</div>
+  <div class="status">Ses dalgasından algılanan kod</div>
+  <div class="partial" id="partialCode"></div>
+
+  <div class="qr-wrap">
+    <div id="qrcode">
+      <div class="placeholder-qr">
+        QR kod bekleniyor...<br>
+        Ses dalgası algılandığında burada oluşacak.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <label for="manualCode">Manuel Kod Girişi (fallback)</label>
+  <input id="manualCode" type="text" inputmode="numeric"
+         placeholder="4 haneli kod" maxlength="4" autocomplete="off">
+  <button id="manualBtn" class="btn-blue">Kodu Uygula</button>
+</div>
+
+<script>
+// ========== STATE ==========
+let audioCtx = null, analyser = null, sourceNode = null, micStream = null;
+let listening = false;
+let currentToneDigit = null, toneFirstSeen = 0, toneLastSeen = 0;
+let digits = [], lastDigitPushTime = 0;
+let studentNo = localStorage.getItem('yoklama_student_no') || '';
+let processGen = 0;
+
+// ✅ FIX #4: Daha hassas eşikler
+const SILENCE_MS = 100;
+const TONE_MIN_MS = 200;
+const CODE_GAP_MS = 4000;
+const DEBOUNCE_MS = 150;
+
+// ========== INIT ==========
+(function init() {
+  const input = document.getElementById('studentNoInput');
+  input.value = studentNo;
+  updateSavedStatus();
+  input.addEventListener('input', () => {
+    studentNo = input.value.trim().replace(/\D/g, '');
+    input.value = studentNo;
+    localStorage.setItem('yoklama_student_no', studentNo);
+    updateSavedStatus();
+  });
+
+  document.getElementById('listenBtn').onclick = toggleListen;
+  document.getElementById('manualBtn').onclick = applyManualCode;
+  document.getElementById('manualCode').addEventListener('keypress', e => {
+    if (e.key === 'Enter') applyManualCode();
+  });
+
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+})();
+
+function updateSavedStatus() {
+  document.getElementById('savedStatus').textContent =
+    studentNo ? '✅ Kaydedildi' : '⚠️ Numara girilmedi';
+}
+
+// ========== LISTEN TOGGLE ==========
+async function toggleListen() {
+  if (listening) return stopListening();
+  if (!studentNo) {
+    showAlert('Lütfen önce öğrenci numaranızı girin.', 'error');
+    return;
+  }
+
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+        channelCount: 1
+      }
+    });
+
+    micStream.getAudioTracks().forEach(t => {
+      try {
+        const p = t.applyConstraints({
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false
+        });
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch {}
+    });
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+    sourceNode = audioCtx.createMediaStreamSource(micStream);
+    analyser = audioCtx.createAnalyser();
+    // ✅ FIX #3: 4096 → 8192 (daha hassas frekans çözünürlüğü)
+    analyser.fftSize = 8192;
+    analyser.smoothingTimeConstant = 0;
+    sourceNode.connect(analyser);
+
+    listening = true;
+    const btn = document.getElementById('listenBtn');
+    btn.textContent = '⏹️ Durdur';
+    btn.className = 'btn-red';
+    document.getElementById('micDot').style.display = 'inline-block';
+    document.getElementById('listenStatus').textContent = '🎤 Dinleniyor...';
+    hideAlert();
+
+    const myGen = ++processGen;
+    processAudio(myGen);
+
+  } catch (e) {
+    showAlert('Mikrofon açılamadı: ' + e.message, 'error');
+    stopListening();
+  }
+}
+
+function stopListening() {
+  listening = false;
+  processGen++;
+  if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+  if (audioCtx) { try { audioCtx.close(); } catch {} audioCtx = null; }
+  analyser = null;
+  sourceNode = null;
+
+  const btn = document.getElementById('listenBtn');
+  btn.textContent = '🎤 Dinle';
+  btn.className = 'btn-green';
+  document.getElementById('micDot').style.display = 'none';
+  document.getElementById('listenStatus').textContent = 'Dinleme durduruldu';
+  document.getElementById('partialCode').textContent = '';
+  document.getElementById('meterBar').style.width = '0%';
+  currentToneDigit = null;
+  digits = [];
+}
+
+// ========== DTMF DETECTION ==========
+const LOW_FREQS = [697, 770, 852, 941];
+const HIGH_FREQS = [1209, 1336, 1477];
+const DIGIT_MAP = {
+  '697,1209':'1','697,1336':'2','697,1477':'3',
+  '770,1209':'4','770,1336':'5','770,1477':'6',
+  '852,1209':'7','852,1336':'8','852,1477':'9',
+  '941,1209':'*','941,1336':'0','941,1477':'#'
+};
+
+function processAudio(myGen) {
+  if (!listening || myGen !== processGen || !analyser) return;
+
+  const freqDb = new Float32Array(analyser.frequencyBinCount);
+  analyser.getFloatFrequencyData(freqDb);
+
+  let maxDb = -Infinity;
+  for (let i = 0; i < freqDb.length; i++) {
+    if (freqDb[i] > maxDb) maxDb = freqDb[i];
+  }
+  const level = Math.max(0, Math.min(100, (maxDb + 100) * 2));
+  const meterBar = document.getElementById('meterBar');
+  if (meterBar) meterBar.style.width = level + '%';
+
+  const digit = detectDTMF(freqDb, audioCtx.sampleRate, analyser.fftSize);
+  const now = performance.now();
+
+  if (digit) {
+    if (digit !== currentToneDigit) {
+      currentToneDigit = digit;
+      toneFirstSeen = now;
+    }
+    toneLastSeen = now;
+  } else {
+    if (currentToneDigit && (now - toneLastSeen) >= SILENCE_MS) {
+      if ((toneLastSeen - toneFirstSeen) >= TONE_MIN_MS) {
+        pushDigit(currentToneDigit, now);
+      }
+      currentToneDigit = null;
+    }
+  }
+
+  requestAnimationFrame(() => processAudio(myGen));
+}
+
+function detectDTMF(freqDb, sampleRate, fftSize) {
+  const binHz = sampleRate / fftSize;
+
+  function power(freq) {
+    const bin = Math.round(freq / binHz);
+    let m = -Infinity;
+    // ✅ FIX #5: ±1 → ±2 (frekans kaymasına tolerans)
+    for (let i = -2; i <= 2; i++) {
+      const v = freqDb[bin + i];
+      if (v !== undefined && v > m) m = v;
+    }
+    return m;
+  }
+
+  const lowVals = LOW_FREQS.map(f => ({ f, db: power(f) })).sort((a, b) => b.db - a.db);
+  const highVals = HIGH_FREQS.map(f => ({ f, db: power(f) })).sort((a, b) => b.db - a.db);
+
+  // ✅ FIX #4: Eşikler gevşetildi (-55→-70, 10→6)
+  const THRESH = -70, DIFF = 6;
+  if (lowVals[0].db < THRESH || highVals[0].db < THRESH) return null;
+  if (lowVals[0].db - lowVals[1].db < DIFF) return null;
+  if (highVals[0].db - highVals[1].db < DIFF) return null;
+
+  return DIGIT_MAP[`${lowVals[0].f},${highVals[0].f}`] || null;
+}
+
+function pushDigit(digit, now) {
+  if (now - lastDigitPushTime < DEBOUNCE_MS) return;
+
+  if (digits.length > 0 && (now - lastDigitPushTime) > CODE_GAP_MS) {
+    digits = [];
+  }
+
+  digits.push(digit);
+  lastDigitPushTime = now;
+
+  const partial = document.getElementById('partialCode');
+  partial.textContent = '🔊 ' + digits.join(' ');
+
+  if (digits.length >= 4) {
+    const code = digits.slice(-4).join('');
+    digits = [];
+    handleCodeDetected(code);
+  }
+}
+
+// ========== QR GENERATION ==========
+function handleCodeDetected(code) {
+  document.getElementById('detectedCode').textContent = code;
+  document.getElementById('partialCode').textContent = '';
+  generateQR(code);
+}
+
+function generateQR(code) {
+  if (!studentNo) {
+    showAlert('Öğrenci numarası gerekli!', 'error');
+    return;
+  }
+
+  // ✅ Guard: QRCode kütüphanesi yüklü mü?
+  if (typeof QRCode === 'undefined') {
+    showAlert('❌ QR kütüphanesi yüklenemedi. Sayfayı yenileyin veya lib/qrcode.min.js ekleyin.', 'error');
+    console.error('[QR] QRCode tanımlı değil!');
+    return;
+  }
+
+  const payload = JSON.stringify({ sn: studentNo, c: code });
+  const container = document.getElementById('qrcode');
+  container.innerHTML = '';
+
+  try {
+    // ✅ FIX: Daha büyük QR (280 → 320) → hoca kamerası daha kolay okur
+    new QRCode(container, {
+      text: payload,
+      width: 320,
+      height: 320,
+      colorDark: '#0f172a',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M || 0
+    });
+    console.log('[QR] Üretildi:', payload);
+    hideAlert();
+  } catch (e) {
+    console.error('[QR] Hata:', e);
+    showAlert('QR üretilemedi: ' + e.message, 'error');
+  }
+}
+
+// ========== MANUAL CODE ==========
+function applyManualCode() {
+  const input = document.getElementById('manualCode');
+  const v = input.value.trim();
+  if (!/^\d{4}$/.test(v)) {
+    showAlert('4 haneli sayısal kod girin.', 'error');
+    return;
+  }
+  if (!studentNo) {
+    showAlert('Öğrenci numarası gerekli!', 'error');
+    return;
+  }
+  document.getElementById('detectedCode').textContent = v;
+  document.getElementById('partialCode').textContent = '';
+  generateQR(v);
+  input.value = '';
+}
+
+// ========== ALERT ==========
+function showAlert(msg, type = 'info') {
+  const el = document.getElementById('alertBox');
+  el.textContent = msg;
+  el.className = 'alert show ' + (type === 'error' ? 'alert-error' : 'alert-info');
+  clearTimeout(showAlert._t);
+  showAlert._t = setTimeout(hideAlert, 5000);
+}
+function hideAlert() {
+  document.getElementById('alertBox').classList.remove('show');
+}
+
+// ========== AUDIO UNLOCK ==========
+document.addEventListener('click', () => {
+  try {
+    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  } catch {}
+}, { once: true });
+</script>
+</body>
+</html>
